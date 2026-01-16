@@ -3,58 +3,91 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>KICKR BIKE Web Bluetooth Test (Watts + ERG)</title>
+  <title>Smart Trainer Web Bluetooth Test (Watts + ERG)</title>
   <style>
+    :root { color-scheme: light dark; }
     body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 18px; }
+    h2 { margin: 0 0 6px; }
+    .muted { opacity: 0.75; }
     .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin: 10px 0; }
-    button { padding: 10px 12px; cursor: pointer; }
-    input[type="number"] { padding: 8px; width: 120px; }
-    .card { border: 1px solid #ddd; border-radius: 12px; padding: 12px; margin: 12px 0; }
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    .kpi { font-size: 26px; font-weight: 700; }
-    .muted { color: #666; }
-    pre { background: #0b1020; color: #d7e0ff; padding: 12px; border-radius: 12px; overflow: auto; max-height: 260px; }
-    .ok { color: #0a7f2e; font-weight: 600; }
-    .bad { color: #b00020; font-weight: 600; }
+    button, input[type="number"] { padding: 10px 12px; border-radius: 10px; border: 1px solid #6664; }
+    button { cursor: pointer; background: color-mix(in oklab, Canvas 92%, CanvasText 8%); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    input[type="number"] { width: 120px; background: Canvas; }
+    input[type="range"] { width: 240px; }
     label { user-select: none; }
+    .card { border: 1px solid #6664; border-radius: 14px; padding: 14px; margin: 12px 0; max-width: 980px; }
+    .grid { display: grid; grid-template-columns: repeat(4, minmax(160px, 1fr)); gap: 12px; }
+    .metric { border: 1px solid #6663; border-radius: 14px; padding: 12px; }
+    .k { font-size: 12px; opacity: 0.7; }
+    .v { font-size: 24px; font-weight: 700; margin-top: 6px; font-variant-numeric: tabular-nums; }
+    pre { background: #0b1020; color: #d7e0ff; padding: 12px; border-radius: 14px; overflow: auto; max-height: 280px; }
+    .pill { display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid #6664; border-radius: 999px; }
+    .dot { width: 10px; height: 10px; border-radius: 999px; background: #888; }
+    .dot.ok { background: #16a34a; }
+    .dot.bad { background: #dc2626; }
+    .dot.warn { background: #f59e0b; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.95em; }
   </style>
 </head>
 
 <body>
-  <h2>KICKR BIKE – Web Bluetooth Test</h2>
+  <h2>Smart Trainer Web Bluetooth Test</h2>
   <div class="muted">
-    Works in Chrome/Edge desktop. Must be served from <b>https://</b> or <b>http://localhost</b>.
-    Make sure Zwift/Wahoo app/etc are fully closed so they’re not holding the BLE connection.
+    Works best in <b>Chrome / Edge</b>. Must be served from <b>HTTPS</b> or <b>http://localhost</b>.
+    Close Zwift / Wahoo / Garmin / TrainerRoad etc first (BLE control can be exclusive).
   </div>
 
   <div class="card">
     <div class="row">
+      <span class="pill">
+        <span id="statusDot" class="dot bad"></span>
+        <span id="statusText">Disconnected</span>
+      </span>
       <button id="btnConnect">Connect</button>
       <button id="btnDisconnect" disabled>Disconnect</button>
-      <span id="status" class="muted">Not connected.</span>
+
+      <label class="pill" title="If ON: only show devices that advertise FTMS or Cycling Power">
+        <input id="chkOnlySportsDevices" type="checkbox" checked />
+        Only show trainers/power devices
+      </label>
     </div>
 
     <div class="grid">
-      <div class="card">
-        <div class="muted">Power (W)</div>
-        <div id="powerW" class="kpi">--</div>
-        <div class="muted">Source: <span id="powerSrc">--</span></div>
+      <div class="metric">
+        <div class="k">Device</div>
+        <div class="v" id="deviceName">—</div>
+        <div class="k">ID</div>
+        <div class="muted" id="deviceId">—</div>
       </div>
 
-      <div class="card">
-        <div class="muted">Cadence (rpm)</div>
-        <div id="cadenceRpm" class="kpi">--</div>
-        <div class="muted">Estimate from Cycling Power crank events (if present)</div>
+      <div class="metric">
+        <div class="k">Power</div>
+        <div class="v"><span id="powerW">—</span> W</div>
+        <div class="muted" id="powerSrc">—</div>
+      </div>
+
+      <div class="metric">
+        <div class="k">Cadence</div>
+        <div class="v"><span id="cadenceRpm">—</span> rpm</div>
+        <div class="muted">From crank events if present</div>
+      </div>
+
+      <div class="metric">
+        <div class="k">Control</div>
+        <div class="v" id="controlCaps">—</div>
+        <div class="muted">FTMS / Wahoo EXT / none</div>
       </div>
     </div>
   </div>
 
   <div class="card">
-    <h3>ERG Control</h3>
+    <h3 style="margin:0 0 8px;">ERG Control</h3>
+
     <div class="row">
       <label>
         <input type="radio" name="ctrlMode" value="auto" checked />
-        Auto (FTMS if possible, else Wahoo)
+        Auto (FTMS if available, else Wahoo EXT)
       </label>
       <label>
         <input type="radio" name="ctrlMode" value="ftms" />
@@ -62,26 +95,40 @@
       </label>
       <label>
         <input type="radio" name="ctrlMode" value="wahoo" />
-        Force Wahoo extension
+        Force Wahoo EXT
       </label>
     </div>
 
-    <div class="row">
-      <input id="targetWatts" type="number" min="0" max="2000" step="5" value="150" />
-      <button id="btnSetErg" disabled>Set ERG Power</button>
-      <button id="btnTakeControl" disabled>FTMS: Request Control</button>
-      <button id="btnStartResume" disabled>FTMS: Start/Resume</button>
+    <div class="row" style="align-items:flex-end;">
+      <div>
+        <div class="k">Target watts</div>
+        <div class="row" style="margin:6px 0 0;">
+          <input id="targetWatts" type="number" min="0" max="2000" step="5" value="180" />
+          <input id="targetWattsSlider" type="range" min="0" max="600" step="5" value="180" />
+          <button id="btnSetErg" disabled>Set ERG Power</button>
+        </div>
+      </div>
+
+      <div style="flex:1;"></div>
+
+      <div>
+        <div class="k">FTMS helpers</div>
+        <div class="row" style="margin:6px 0 0;">
+          <button id="btnFtmsControl" disabled>Request Control</button>
+          <button id="btnFtmsStart" disabled>Start/Resume</button>
+        </div>
+      </div>
     </div>
 
-    <div class="muted">
-      Note: Many trainers require <b>Request Control</b> before accepting FTMS commands. If FTMS fails,
-      the page falls back to Wahoo’s extension control point.
+    <div class="muted" style="margin-top:8px;">
+      If your trainer only exposes <b>Cycling Power</b> (watts) but no <b>FTMS control</b>, ERG may not be possible without vendor-specific protocols.
     </div>
   </div>
 
   <div class="card">
-    <h3>Debug</h3>
     <div class="row">
+      <h3 style="margin:0;">Debug</h3>
+      <div style="flex:1;"></div>
       <button id="btnListServices" disabled>List Primary Services</button>
       <button id="btnClearLog">Clear Log</button>
     </div>
@@ -90,11 +137,13 @@
 
 <script>
 (() => {
-  // ---- UUIDs ----
+  // ===== UUIDs =====
   const UUIDS = {
+    // Services
     FTMS:        "00001826-0000-1000-8000-00805f9b34fb",
     CYCLING_PWR: "00001818-0000-1000-8000-00805f9b34fb",
     DEVICE_INFO: "0000180a-0000-1000-8000-00805f9b34fb",
+    HEART_RATE:  "0000180d-0000-1000-8000-00805f9b34fb",
     USER_DATA:   "0000181c-0000-1000-8000-00805f9b34fb",
 
     // Cycling Power characteristics
@@ -106,35 +155,44 @@
     FTMS_STATUS:           "00002ada-0000-1000-8000-00805f9b34fb",
 
     // Wahoo Cycling Power Extension characteristic (inside Cycling Power service)
+    // (Works on many Wahoo trainers/bikes)
     WAHOO_CP_EXT: "a026e005-0a7d-4ab3-97fa-f1500f9feb8b"
   };
 
-  // ---- UI ----
+  // ===== UI helpers =====
   const $ = (id) => document.getElementById(id);
   const logEl = $("log");
-  const statusEl = $("status");
-  const powerWEl = $("powerW");
-  const cadenceEl = $("cadenceRpm");
-  const powerSrcEl = $("powerSrc");
 
   function log(msg) {
     const t = new Date().toLocaleTimeString();
     logEl.textContent += `[${t}] ${msg}\n`;
     logEl.scrollTop = logEl.scrollHeight;
   }
-  function setStatus(msg, cls = "") {
-    statusEl.className = cls ? cls : "muted";
-    statusEl.textContent = msg;
-  }
-  function setPower(w, src) {
-    powerWEl.textContent = (w ?? "--");
-    powerSrcEl.textContent = (src ?? "--");
-  }
-  function setCadence(rpm) {
-    cadenceEl.textContent = (rpm ?? "--");
+
+  function setStatus(state, text) {
+    const dot = $("statusDot");
+    dot.classList.remove("ok","bad","warn");
+    dot.classList.add(state);
+    $("statusText").textContent = text;
   }
 
-  // ---- BLE state ----
+  function setPower(w, src) {
+    $("powerW").textContent = (w ?? "—");
+    $("powerSrc").textContent = (src ?? "—");
+  }
+
+  function setCadence(rpm) {
+    $("cadenceRpm").textContent = (rpm ?? "—");
+  }
+
+  function setCaps() {
+    const caps = [];
+    if (ftmsCtrlChar) caps.push("FTMS");
+    if (wahooExtChar) caps.push("Wahoo EXT");
+    $("controlCaps").textContent = caps.length ? caps.join(" + ") : "none";
+  }
+
+  // ===== BLE state =====
   let device = null;
   let server = null;
 
@@ -145,29 +203,37 @@
   let ftmsStatusChar = null;
   let wahooExtChar = null;
 
-  // For cadence estimation (cycling power crank events)
-  let lastCrankRevs = null;
-  let lastCrankTime = null; // uint16 (1/1024s)
+  // Cadence estimation via crank events (Cycling Power Measurement)
+  let lastCrankRevs = null;  // uint16
+  let lastCrankTime = null;  // uint16, 1/1024s
 
-  // ---- Helpers ----
-  function u16(view, off) { return view.getUint16(off, true); }
-  function i16(view, off) { return view.getInt16(off, true); }
-  function u32(view, off) { return view.getUint32(off, true); }
+  // ===== Small utils =====
+  const u16 = (dv, off) => dv.getUint16(off, true);
+  const i16 = (dv, off) => dv.getInt16(off, true);
+
+  function clampInt(n, min, max) {
+    n = Number.isFinite(n) ? Math.trunc(n) : min;
+    return Math.min(max, Math.max(min, n));
+  }
+
+  function bytesToHex(u8) {
+    return [...u8].map(b => b.toString(16).padStart(2,"0")).join(" ");
+  }
 
   function chosenCtrlMode() {
     return document.querySelector('input[name="ctrlMode"]:checked')?.value || "auto";
   }
 
-  function bytesToHex(u8) {
-    return [...u8].map(b => b.toString(16).padStart(2, "0")).join(" ");
+  // ===== Notifications =====
+  async function startNotifs(char, handler) {
+    await char.startNotifications();
+    char.addEventListener("characteristicvaluechanged", handler);
   }
 
-  // ---- Parse Cycling Power Measurement (0x2A63) ----
-  // Instantaneous power is always present as int16 after flags.
-  // Optional crank event fields let us estimate cadence.
-  function handleCyclingPowerMeasurement(ev) {
-    const v = ev.target.value; // DataView
-    if (!(v instanceof DataView)) return;
+  // ===== Parse Cycling Power Measurement (0x2A63) =====
+  function onCyclingPowerMeasurement(ev) {
+    const v = ev.target.value;
+    if (!(v instanceof DataView) || v.byteLength < 4) return;
 
     const flags = u16(v, 0);
     let idx = 2;
@@ -179,180 +245,105 @@
     const WHEEL_REV_PRESENT  = (flags & (1 << 4)) !== 0;
     const CRANK_REV_PRESENT  = (flags & (1 << 5)) !== 0;
 
-    if (ACC_TORQUE_PRESENT) {
-      idx += 2; // skip accumulated torque
-    }
-    if (WHEEL_REV_PRESENT) {
-      idx += 4; // cumulative wheel revs
-      idx += 2; // last wheel event time
-    }
-    if (CRANK_REV_PRESENT) {
+    if (ACC_TORQUE_PRESENT) idx += 2;
+    if (WHEEL_REV_PRESENT)  idx += 6; // 4 + 2
+    if (CRANK_REV_PRESENT && v.byteLength >= idx + 4) {
       const crankRevs = u16(v, idx); idx += 2;
-      const crankTime = u16(v, idx); idx += 2; // unit: 1/1024 s
+      const crankTime = u16(v, idx); idx += 2;
 
       if (lastCrankRevs !== null && lastCrankTime !== null) {
         const dRevs = (crankRevs - lastCrankRevs + 65536) % 65536;
         const dTimeTicks = (crankTime - lastCrankTime + 65536) % 65536;
         const dTimeSec = dTimeTicks / 1024;
 
-        if (dTimeSec > 0 && dRevs >= 0 && dRevs < 1000) {
+        if (dTimeSec > 0 && dRevs >= 0 && dRevs < 500) {
           const rpm = (dRevs / dTimeSec) * 60;
-          // smooth/limit a bit
           if (rpm >= 0 && rpm <= 250) setCadence(Math.round(rpm));
         }
       }
-
       lastCrankRevs = crankRevs;
       lastCrankTime = crankTime;
     }
   }
 
-  // ---- Parse FTMS Indoor Bike Data (0x2AD2) (minimal) ----
-  // We only extract instantaneous power if present.
-  // Field ordering is per FTMS spec (Flags then mandatory speed then optionals). :contentReference[oaicite:2]{index=2}
-  function handleFtmsIndoorBikeData(ev) {
+  // ===== Parse FTMS Indoor Bike Data (0x2AD2) minimal =====
+  function onIndoorBikeData(ev) {
     const v = ev.target.value;
-    if (!(v instanceof DataView)) return;
+    if (!(v instanceof DataView) || v.byteLength < 6) return;
 
     const flags = u16(v, 0);
     let idx = 2;
 
-    // Mandatory Instantaneous Speed (uint16). Often 0.01 km/h, but not needed here.
+    // Mandatory Instantaneous Speed (u16) exists even if we ignore it
     idx += 2;
 
-    const AVG_SPEED_PRESENT     = (flags & (1 << 1)) !== 0;
-    const INST_CAD_PRESENT      = (flags & (1 << 2)) !== 0;
-    const AVG_CAD_PRESENT       = (flags & (1 << 3)) !== 0;
-    const TOTAL_DIST_PRESENT    = (flags & (1 << 4)) !== 0;
-    const RES_LEVEL_PRESENT     = (flags & (1 << 5)) !== 0;
-    const INST_POWER_PRESENT    = (flags & (1 << 6)) !== 0;
-    const AVG_POWER_PRESENT     = (flags & (1 << 7)) !== 0;
-    const EXP_ENERGY_PRESENT    = (flags & (1 << 8)) !== 0;
-    const HR_PRESENT            = (flags & (1 << 9)) !== 0;
-    const MET_PRESENT           = (flags & (1 << 10)) !== 0;
-    const ELAPSED_PRESENT       = (flags & (1 << 11)) !== 0;
-    const REMAINING_PRESENT     = (flags & (1 << 12)) !== 0;
+    // skip fields up to instantaneous power when present (best-effort)
+    if (flags & (1 << 1)) idx += 2; // avg speed
+    if (flags & (1 << 2)) idx += 2; // inst cadence
+    if (flags & (1 << 3)) idx += 2; // avg cadence
+    if (flags & (1 << 4)) idx += 3; // total distance (u24)
+    if (flags & (1 << 5)) idx += 2; // resistance level
 
-    if (AVG_SPEED_PRESENT) idx += 2;
-    if (INST_CAD_PRESENT)  idx += 2;
-    if (AVG_CAD_PRESENT)   idx += 2;
-    if (TOTAL_DIST_PRESENT) idx += 3; // uint24
-    if (RES_LEVEL_PRESENT) idx += 2;
-
-    if (INST_POWER_PRESENT) {
-      const p = i16(v, idx); idx += 2;
-      // Only use FTMS power if we don't already have CP power active
-      if (!cpMeasChar) setPower(p, "FTMS Indoor Bike Data (0x2AD2)");
+    if (flags & (1 << 6)) { // instantaneous power present
+      if (v.byteLength >= idx + 2) {
+        const p = i16(v, idx);
+        // only use FTMS power if CP isn't running
+        if (!cpMeasChar) setPower(p, "FTMS Indoor Bike Data (0x2AD2)");
+      }
     }
-
-    if (AVG_POWER_PRESENT) idx += 2;
-    if (EXP_ENERGY_PRESENT) idx += 5; // total (u16) + per hour (u16) + per min (u8)
-    if (HR_PRESENT) idx += 1;
-    if (MET_PRESENT) idx += 1;
-    if (ELAPSED_PRESENT) idx += 2;
-    if (REMAINING_PRESENT) idx += 2;
   }
 
-  // ---- FTMS Control Point helpers ----
+  // ===== FTMS Control Point commands =====
   async function ftmsRequestControl() {
-    if (!ftmsCtrlChar) throw new Error("FTMS control point not available.");
-    // Opcode 0x00 = Request Control (FTMS)
-    const cmd = new Uint8Array([0x00]);
+    if (!ftmsCtrlChar) throw new Error("FTMS control point not available");
+    const cmd = new Uint8Array([0x00]); // Request Control
     await ftmsCtrlChar.writeValueWithResponse(cmd);
-    log(`✅ FTMS: Request Control sent (${bytesToHex(cmd)})`);
+    log(`✅ FTMS Request Control sent (${bytesToHex(cmd)})`);
   }
 
   async function ftmsStartResume() {
-    if (!ftmsCtrlChar) throw new Error("FTMS control point not available.");
-    // Opcode 0x07 = Start or Resume (FTMS)
-    const cmd = new Uint8Array([0x07]);
+    if (!ftmsCtrlChar) throw new Error("FTMS control point not available");
+    const cmd = new Uint8Array([0x07]); // Start or Resume
     await ftmsCtrlChar.writeValueWithResponse(cmd);
-    log(`✅ FTMS: Start/Resume sent (${bytesToHex(cmd)})`);
+    log(`✅ FTMS Start/Resume sent (${bytesToHex(cmd)})`);
   }
 
   async function ftmsSetTargetPower(watts) {
-    if (!ftmsCtrlChar) throw new Error("FTMS control point not available.");
-    // Opcode 0x05 = Set Target Power (uint16 LE)
-    const w = Math.max(0, Math.min(2000, watts|0));
-    const cmd = new Uint8Array([0x05, w & 0xFF, (w >> 8) & 0xFF]);
+    if (!ftmsCtrlChar) throw new Error("FTMS control point not available");
+    const w = clampInt(watts, 0, 2000);
+    const cmd = new Uint8Array([0x05, w & 0xFF, (w >> 8) & 0xFF]); // Set Target Power
     await ftmsCtrlChar.writeValueWithResponse(cmd);
-    log(`✅ FTMS: Set Target Power ${w}W (${bytesToHex(cmd)})`);
+    log(`✅ FTMS Set Target Power ${w}W (${bytesToHex(cmd)})`);
   }
 
-  // ---- Wahoo Extension helpers ----
+  // ===== Wahoo extension ERG fallback =====
   async function wahooSetErgPower(watts) {
-    if (!wahooExtChar) throw new Error("Wahoo extension characteristic not available.");
-    // From KICKR BIKE reverse-engineering: opcode 0x42 + uint16 LE watts sets ERG power. :contentReference[oaicite:3]{index=3}
-    const w = Math.max(0, Math.min(2000, watts|0));
-    const cmd = new Uint8Array([0x42, w & 0xFF, (w >> 8) & 0xFF]);
+    if (!wahooExtChar) throw new Error("Wahoo extension characteristic not available");
+    const w = clampInt(watts, 0, 2000);
+    const cmd = new Uint8Array([0x42, w & 0xFF, (w >> 8) & 0xFF]); // ERG opcode
     await wahooExtChar.writeValueWithResponse(cmd);
-    log(`✅ Wahoo EXT: Set ERG Power ${w}W (${bytesToHex(cmd)})`);
+    log(`✅ Wahoo EXT Set ERG Power ${w}W (${bytesToHex(cmd)})`);
   }
 
-  // ---- Connect / Discover ----
-  async function connect() {
-    if (!navigator.bluetooth) {
-      throw new Error("Web Bluetooth not supported in this browser.");
-    }
-
-    setStatus("Opening device picker…");
-    log("Opening device picker…");
-
-    // IMPORTANT:
-    // We include FTMS + Cycling Power in optionalServices so we can access them
-    // even if the user picked the device via name filter.
-    device = await navigator.bluetooth.requestDevice({
-      filters: [{ namePrefix: "KICKR" }],
-      optionalServices: [
-        UUIDS.FTMS,
-        UUIDS.CYCLING_PWR,
-        UUIDS.DEVICE_INFO,
-        UUIDS.USER_DATA
-      ]
-    });
-
-    log(`Selected: ${device.name || "(unnamed)"} (${device.id})`);
-    device.addEventListener("gattserverdisconnected", onDisconnected);
-
-    server = await device.gatt.connect();
-    setStatus("GATT connected.", "ok");
-    log("GATT connected.");
-
-    $("btnDisconnect").disabled = false;
-    $("btnSetErg").disabled = false;
-    $("btnListServices").disabled = false;
-
-    // Try Cycling Power (watts + cadence)
-    await setupCyclingPower();
-
-    // Try FTMS (bike data + control)
-    await setupFtms();
-
-    // Enable FTMS buttons only if present
-    $("btnTakeControl").disabled = !ftmsCtrlChar;
-    $("btnStartResume").disabled = !ftmsCtrlChar;
-
-    setStatus("Connected + notifications started.", "ok");
-  }
-
+  // ===== Setup services =====
   async function setupCyclingPower() {
     try {
       const cpSvc = await server.getPrimaryService(UUIDS.CYCLING_PWR);
 
-      // Power measurement
+      // Power measurement notifications
       cpMeasChar = await cpSvc.getCharacteristic(UUIDS.CP_MEAS);
-      await cpMeasChar.startNotifications();
-      cpMeasChar.addEventListener("characteristicvaluechanged", handleCyclingPowerMeasurement);
-      log("✅ Cycling Power Measurement (0x2A63) notifications started.");
+      await startNotifs(cpMeasChar, onCyclingPowerMeasurement);
+      log("✅ Cycling Power Measurement notifications started (0x2A63).");
 
-      // Wahoo extension control point
+      // Wahoo extension characteristic (optional)
       try {
         wahooExtChar = await cpSvc.getCharacteristic(UUIDS.WAHOO_CP_EXT);
-        await wahooExtChar.startNotifications(); // allow indications/acks (if any)
-        log("✅ Wahoo Cycling Power Extension (a026e005…) found + indications enabled.");
+        // Some devices may support indications; safe to try startNotifs but ignore failure
+        try { await wahooExtChar.startNotifications(); } catch (_) {}
+        log("✅ Wahoo extension characteristic found (a026e005…).");
       } catch (e) {
         wahooExtChar = null;
-        log("ℹ️ Wahoo extension characteristic not found (a026e005…).");
+        log("ℹ️ Wahoo extension characteristic not found.");
       }
     } catch (e) {
       cpMeasChar = null;
@@ -365,35 +356,35 @@
     try {
       const ftmsSvc = await server.getPrimaryService(UUIDS.FTMS);
 
-      // Indoor bike data notifications
+      // Indoor bike data notifications (optional)
       try {
         ftmsIndoorChar = await ftmsSvc.getCharacteristic(UUIDS.FTMS_INDOOR_BIKE_DATA);
-        await ftmsIndoorChar.startNotifications();
-        ftmsIndoorChar.addEventListener("characteristicvaluechanged", handleFtmsIndoorBikeData);
-        log("✅ FTMS Indoor Bike Data (0x2AD2) notifications started.");
+        await startNotifs(ftmsIndoorChar, onIndoorBikeData);
+        log("✅ FTMS Indoor Bike Data notifications started (0x2AD2).");
       } catch (e) {
         ftmsIndoorChar = null;
-        log("ℹ️ FTMS Indoor Bike Data (0x2AD2) not available.");
+        log("ℹ️ FTMS Indoor Bike Data not available.");
       }
 
       // Control point (write + indicate)
       try {
         ftmsCtrlChar = await ftmsSvc.getCharacteristic(UUIDS.FTMS_CTRL_PT);
-        await ftmsCtrlChar.startNotifications(); // enable indications
-        log("✅ FTMS Control Point (0x2AD9) ready (write+indicate).");
+        // Enable indications if supported
+        try { await ftmsCtrlChar.startNotifications(); } catch (_) {}
+        log("✅ FTMS Control Point ready (0x2AD9).");
       } catch (e) {
         ftmsCtrlChar = null;
-        log("ℹ️ FTMS Control Point (0x2AD9) not available.");
+        log("ℹ️ FTMS Control Point not available.");
       }
 
-      // Status notifications
+      // Status notifications (optional)
       try {
         ftmsStatusChar = await ftmsSvc.getCharacteristic(UUIDS.FTMS_STATUS);
-        await ftmsStatusChar.startNotifications();
-        log("✅ FTMS Status (0x2ADA) notifications started.");
+        try { await ftmsStatusChar.startNotifications(); } catch (_) {}
+        log("✅ FTMS Status notifications enabled (0x2ADA).");
       } catch (e) {
         ftmsStatusChar = null;
-        log("ℹ️ FTMS Status (0x2ADA) not available.");
+        log("ℹ️ FTMS Status not available.");
       }
     } catch (e) {
       ftmsIndoorChar = null;
@@ -403,16 +394,112 @@
     }
   }
 
+  // ===== Connect / Disconnect =====
+  async function connect() {
+    if (!navigator.bluetooth) {
+      throw new Error("Web Bluetooth not supported. Use Chrome/Edge desktop.");
+    }
+
+    setStatus("warn", "Opening device picker…");
+    log("Opening device picker…");
+
+    const onlySports = $("chkOnlySportsDevices").checked;
+
+    // If you want *maximum* compatibility:
+    // - Using filters ensures we only show devices that match (FTMS or Cycling Power),
+    //   which keeps the chooser clean.
+    // - If you untick "Only show trainers/power devices", we allow acceptAllDevices
+    //   (but then optionalServices still governs what we can access).
+    let requestOpts;
+
+    if (onlySports) {
+      requestOpts = {
+        filters: [
+          { services: [UUIDS.FTMS] },
+          { services: [UUIDS.CYCLING_PWR] },
+
+          // Helpful name prefixes (optional)
+          { namePrefix: "KICKR" },
+          { namePrefix: "WAHOO" },
+          { namePrefix: "Wahoo" },
+          { namePrefix: "TACX" },
+          { namePrefix: "Tacx" },
+          { namePrefix: "NEO" },
+          { namePrefix: "GARMIN" },
+          { namePrefix: "Garmin" },
+          { namePrefix: "ELITE" },
+          { namePrefix: "Elite" },
+          { namePrefix: "SARIS" },
+          { namePrefix: "Saris" },
+          { namePrefix: "HAMMER" },
+          { namePrefix: "H3" },
+          { namePrefix: "JETBLACK" },
+          { namePrefix: "JetBlack" },
+          { namePrefix: "STAGES" },
+          { namePrefix: "Stages" },
+        ],
+        optionalServices: [
+          UUIDS.FTMS,
+          UUIDS.CYCLING_PWR,
+          UUIDS.DEVICE_INFO,
+          UUIDS.HEART_RATE,
+          UUIDS.USER_DATA
+        ]
+      };
+    } else {
+      requestOpts = {
+        acceptAllDevices: true,
+        optionalServices: [
+          UUIDS.FTMS,
+          UUIDS.CYCLING_PWR,
+          UUIDS.DEVICE_INFO,
+          UUIDS.HEART_RATE,
+          UUIDS.USER_DATA
+        ]
+      };
+    }
+
+    device = await navigator.bluetooth.requestDevice(requestOpts);
+
+    $("deviceName").textContent = device.name || "(unnamed device)";
+    $("deviceId").textContent = device.id || "—";
+    log(`Selected: ${device.name || "(unnamed)"} (${device.id})`);
+
+    device.addEventListener("gattserverdisconnected", onDisconnected);
+
+    server = await device.gatt.connect();
+    log("GATT connected.");
+
+    // Setup services
+    await setupCyclingPower();
+    await setupFtms();
+
+    setCaps();
+
+    // Enable UI
+    $("btnDisconnect").disabled = false;
+    $("btnSetErg").disabled = false;
+    $("btnListServices").disabled = false;
+
+    $("btnFtmsControl").disabled = !ftmsCtrlChar;
+    $("btnFtmsStart").disabled = !ftmsCtrlChar;
+
+    setStatus("ok", "Connected");
+    log("Ready. Start pedaling to see power.");
+  }
+
   async function disconnect() {
     try {
       if (device?.gatt?.connected) device.gatt.disconnect();
-    } catch (e) {}
+    } catch (_) {}
     cleanup();
-    setStatus("Disconnected.", "bad");
+    setStatus("bad", "Disconnected");
     log("Disconnected.");
   }
 
   function cleanup() {
+    server = null;
+
     cpMeasChar = null;
     ftmsIndoorChar = null;
     ftmsCtrlChar = null;
@@ -425,97 +512,99 @@
     $("btnDisconnect").disabled = true;
     $("btnSetErg").disabled = true;
     $("btnListServices").disabled = true;
-    $("btnTakeControl").disabled = true;
-    $("btnStartResume").disabled = true;
+    $("btnFtmsControl").disabled = true;
+    $("btnFtmsStart").disabled = true;
 
     setPower(null, null);
     setCadence(null);
+    setCaps();
+
+    $("deviceName").textContent = "—";
+    $("deviceId").textContent = "—";
   }
 
   function onDisconnected() {
-    log("⚠️ Device disconnected (gattserverdisconnected).");
+    log("⚠️ Device disconnected.");
     cleanup();
-    setStatus("Disconnected.", "bad");
+    setStatus("bad", "Disconnected");
   }
 
-  async function listServices() {
+  // ===== Debug: list services =====
+  async function listPrimaryServices() {
     if (!server) return;
     const svcs = await server.getPrimaryServices();
     log("Primary services (accessible):");
-    for (const s of svcs) {
-      log(`  - ${s.uuid}`);
-    }
+    for (const s of svcs) log(`  - ${s.uuid}`);
   }
 
-  // ---- ERG button ----
-  async function setErgFromUi() {
-    const watts = parseInt($("targetWatts").value, 10) || 0;
+  // ===== ERG handler =====
+  async function setErg() {
+    const watts = clampInt(parseInt($("targetWatts").value, 10), 0, 2000);
     const mode = chosenCtrlMode();
 
-    const canFtms = !!ftmsCtrlChar;
-    const canWahoo = !!wahooExtChar;
+    const hasFtms = !!ftmsCtrlChar;
+    const hasWahoo = !!wahooExtChar;
 
-    if (!canFtms && !canWahoo) {
-      log("❌ No supported control path available (FTMS control point or Wahoo extension).");
+    if (!hasFtms && !hasWahoo) {
+      log("❌ No control available (no FTMS control point and no Wahoo extension).");
+      setStatus("warn", "Connected (power-only)");
       return;
     }
 
-    // Decide path
-    let use = mode;
-    if (mode === "auto") use = canFtms ? "ftms" : "wahoo";
-    if (mode === "ftms" && !canFtms) {
-      log("❌ Forced FTMS selected, but FTMS Control Point not available.");
+    let path = mode;
+    if (mode === "auto") path = hasFtms ? "ftms" : "wahoo";
+    if (path === "ftms" && !hasFtms) {
+      log("❌ Forced FTMS selected but FTMS Control Point not present.");
       return;
     }
-    if (mode === "wahoo" && !canWahoo) {
-      log("❌ Forced Wahoo selected, but Wahoo extension not available.");
+    if (path === "wahoo" && !hasWahoo) {
+      log("❌ Forced Wahoo EXT selected but extension not present.");
       return;
     }
 
     try {
-      if (use === "ftms") {
-        // Many trainers require request control first
-        await ftmsRequestControl().catch(e => log(`ℹ️ FTMS Request Control failed/ignored: ${e.message || e}`));
-        await ftmsStartResume().catch(e => log(`ℹ️ FTMS Start/Resume failed/ignored: ${e.message || e}`));
+      if (path === "ftms") {
+        // Many trainers require these first; ignore failures, still try target power.
+        await ftmsRequestControl().catch(e => log(`ℹ️ FTMS Request Control: ${e.message || e}`));
+        await ftmsStartResume().catch(e => log(`ℹ️ FTMS Start/Resume: ${e.message || e}`));
         await ftmsSetTargetPower(watts);
-        setStatus(`ERG set via FTMS → ${watts}W`, "ok");
+        setStatus("ok", `ERG set via FTMS (${watts}W)`);
       } else {
         await wahooSetErgPower(watts);
-        setStatus(`ERG set via Wahoo EXT → ${watts}W`, "ok");
+        setStatus("ok", `ERG set via Wahoo EXT (${watts}W)`);
       }
     } catch (e) {
-      setStatus("ERG set failed.", "bad");
-      log(`❌ ERG set failed: ${e.message || e}`);
+      log(`❌ ERG failed: ${e.message || e}`);
+      setStatus("warn", "ERG failed (see log)");
     }
   }
 
-  // ---- Wire up UI ----
+  // ===== UI wiring =====
   $("btnConnect").addEventListener("click", async () => {
-    try {
-      await connect();
-    } catch (e) {
-      setStatus("Connect failed.", "bad");
+    try { await connect(); }
+    catch (e) {
       log(`❌ Connect failed: ${e.message || e}`);
       cleanup();
+      setStatus("bad", "Connect failed");
     }
   });
 
   $("btnDisconnect").addEventListener("click", disconnect);
 
-  $("btnSetErg").addEventListener("click", setErgFromUi);
+  $("btnSetErg").addEventListener("click", setErg);
 
-  $("btnTakeControl").addEventListener("click", async () => {
+  $("btnFtmsControl").addEventListener("click", async () => {
     try { await ftmsRequestControl(); }
     catch (e) { log(`❌ FTMS Request Control failed: ${e.message || e}`); }
   });
 
-  $("btnStartResume").addEventListener("click", async () => {
+  $("btnFtmsStart").addEventListener("click", async () => {
     try { await ftmsStartResume(); }
     catch (e) { log(`❌ FTMS Start/Resume failed: ${e.message || e}`); }
   });
 
   $("btnListServices").addEventListener("click", async () => {
-    try { await listServices(); }
+    try { await listPrimaryServices(); }
     catch (e) { log(`❌ List services failed: ${e.message || e}`); }
   });
 
@@ -523,8 +612,21 @@
     logEl.textContent = "";
   });
 
+  // Slider sync
+  $("targetWattsSlider").addEventListener("input", () => {
+    $("targetWatts").value = $("targetWattsSlider").value;
+  });
+  $("targetWatts").addEventListener("input", () => {
+    const w = clampInt(parseInt($("targetWatts").value, 10), 0, 2000);
+    $("targetWatts").value = w;
+    $("targetWattsSlider").value = String(Math.min(600, w));
+  });
+
+  // Initial state
+  setStatus("bad", "Disconnected");
+  setPower(null, null);
+  setCadence(null);
+  setCaps();
 })();
 </script>
-
 </body>
-</html>
